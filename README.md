@@ -17,25 +17,6 @@ fase-1/
 └── README.md
 ```
 
-## ⚠️ Nota importante sobre los datos
-
-El dataset `data/ipc_panel_sintetico.csv` es **sintético**. Se generó con
-`data/generar_datos.py` porque el entorno donde se construyó este proyecto
-no tenía acceso de red a las APIs del DANE (datos.gov.co) ni del Banco de la
-República. Está calibrado con órdenes de magnitud realistas (volatilidad por
-grupo de gasto, estacionalidad de enero/matrículas, choques cambiarios de
-2014-2016 y 2020, escalones de la tasa de Banrep, etc.) para poder construir
-y validar todo el pipeline de extremo a extremo.
-
-**Antes de la entrega final del proyecto** se debe reemplazar este CSV por
-datos reales. Al final de `data/generar_datos.py` están las instrucciones y
-fuentes exactas:
-
-- **IPC por ciudad y grupo de gasto:** DANE, vía API Socrata de datos.gov.co
-- **TRM histórica:** Banco de la República — https://www.banrep.gov.co/es/estadisticas/trm
-- **Tasa de intervención:** Banco de la República — https://www.banrep.gov.co/es/estadisticas/tasas-interes-politica-monetaria
-- **Petróleo Brent/WTI:** por ejemplo con `yfinance` (`yf.download("BZ=F")`)
-
 El notebook y el pipeline de modelado **no requieren ningún cambio**: basta
 con producir un CSV con las mismas columnas
 (`fecha, ciudad, grupo_gasto, ipc_variacion_mensual, trm_promedio_mensual, tasa_banrep, petroleo_brent_usd`)

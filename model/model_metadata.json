@@ -1,0 +1,36 @@
+{
+  "version": "v1",
+  "modelo": "random_forest",
+  "fecha_entrenamiento": "2026-08-14",
+  "periodo_train": [
+    "2008-07-01",
+    "2022-12-01"
+  ],
+  "periodo_test": [
+    "2023-01-01",
+    "2025-12-01"
+  ],
+  "features_numericas": [
+    "ipc_lag1",
+    "ipc_lag3",
+    "ipc_lag6",
+    "mes_sin",
+    "mes_cos",
+    "tasa_banrep",
+    "var_trm",
+    "var_petroleo"
+  ],
+  "features_categoricas": [
+    "ciudad",
+    "grupo_gasto"
+  ],
+  "target": "ipc_variacion_mensual",
+  "metricas_test": {
+    "MAE": 0.28443400284624465,
+    "RMSE": 0.37808091837897034,
+    "MAPE_%": 230.59161330885865
+  },
+  "baseline_naive_rmse": 0.6634750979021484,
+  "n_observaciones_totales": 60480,
+  "nota_datos": "Entrenado con panel SINTETICO (ver data/generar_datos.py). Reemplazar por datos reales de DANE/Banrep antes de la entrega final."
+}

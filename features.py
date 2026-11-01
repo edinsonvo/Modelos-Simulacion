@@ -6,7 +6,7 @@ Mantener esta lógica en un único módulo evita que el entrenamiento y la
 predicción diverjan (un error clásico: "training/serving skew").
 """
 
-from typing import List
+from typing import Any, Dict, List
 import numpy as np
 import pandas as pd
 
@@ -52,14 +52,23 @@ def _compute_pct_changes(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def build_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Construye las variables predictoras a partir del panel crudo."""
+    """Construye las variables predictoras a partir del panel crudo.
+
+    Valida la presencia de columnas, fuerza la conversión de fecha a datetime
+    y calcula rezagos, variables cíclicas y variaciones macroeconómicas.
+    """
     faltantes = set(REQUIRED_RAW_COLUMNS) - set(df.columns)
     if faltantes:
         raise ValueError(f"Faltan columnas requeridas en los datos: {sorted(faltantes)}")
 
-    panel = df.sort_values(["ciudad", "grupo_gasto", "fecha"]).copy()
+    panel = df.copy()
 
-    # Transformaciones modulares
+    # Validación defensiva de formato temporal
+    if not pd.api.types.is_datetime64_any_dtype(panel["fecha"]):
+        panel["fecha"] = pd.to_datetime(panel["fecha"])
+
+    panel = panel.sort_values(["ciudad", "grupo_gasto", "fecha"]).reset_index(drop=True)
+
     panel = _compute_lags(panel)
     panel = _compute_cyclical_features(panel)
     panel = _compute_pct_changes(panel)
@@ -71,11 +80,18 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
     return panel[columnas_finales]
 
 
-def build_single_prediction_row(payload: dict) -> pd.DataFrame:
-    """Valida y convierte un payload de predicción (dict) en un DataFrame."""
+def build_single_prediction_row(payload: Dict[str, Any]) -> pd.DataFrame:
+    """Valida y convierte un payload de predicción (dict) en un DataFrame.
+
+    Garantiza que el payload sea un diccionario, contenga todos los campos
+    requeridos y retorne las columnas en el orden estricto del modelo.
+    """
+    if not isinstance(payload, dict):
+        raise TypeError(f"Se esperaba un dict para el payload, recibido: {type(payload).__name__}")
+
     faltantes = [c for c in PREDICTION_INPUT_FIELDS if c not in payload]
     if faltantes:
         raise ValueError(f"Faltan campos requeridos en la solicitud: {faltantes}")
 
     fila = {col: payload[col] for col in PREDICTION_INPUT_FIELDS}
-    return pd.DataFrame([fila])
+    return pd.DataFrame([fila])[PREDICTION_INPUT_FIELDS]

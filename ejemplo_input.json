@@ -1,0 +1,12 @@
+{
+  "ciudad": "Medellín",
+  "grupo_gasto": "Transporte",
+  "ipc_lag1": 0.42,
+  "ipc_lag3": 0.31,
+  "ipc_lag6": 0.55,
+  "mes_sin": 0.5,
+  "mes_cos": 0.8660254,
+  "tasa_banrep": 9.5,
+  "var_trm": 1.2,
+  "var_petroleo": -0.5
+}

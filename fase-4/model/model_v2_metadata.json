@@ -1,0 +1,35 @@
+{
+  "version": 2,
+  "model_type": "ridge",
+  "trained_at": "2026-11-21 20:14:49",
+  "data_source": "data/ipc_panel_sintetico.csv",
+  "n_observations": 60480,
+  "train_period": [
+    "2008-07-01",
+    "2022-12-01"
+  ],
+  "test_period": [
+    "2023-01-01",
+    "2025-12-01"
+  ],
+  "features_num": [
+    "ipc_lag1",
+    "ipc_lag3",
+    "ipc_lag6",
+    "mes_sin",
+    "mes_cos",
+    "tasa_banrep",
+    "var_trm",
+    "var_petroleo"
+  ],
+  "features_cat": [
+    "ciudad",
+    "grupo_gasto"
+  ],
+  "target": "ipc_variacion_mensual",
+  "metrics": {
+    "MAE": 0.31961963768990254,
+    "RMSE": 0.4542940186340291,
+    "baseline_naive_RMSE": 0.6634750979021484
+  }
+}

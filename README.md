@@ -1,128 +1,165 @@
-# Fase 2 — Scripts y Docker
+# Fase 3 — API REST
 
 **Proyecto:** Predicción de la variación mensual del IPC en Colombia por ciudad y grupo de gasto
 **Curso:** Modelos y Simulación de Sistemas I — Universidad de Antioquia
 
-Esta fase convierte el modelo construido en la Fase 1 en una aplicación
-reutilizable desde línea de comandos y empaquetada en un contenedor Docker.
-**No se entrena un modelo nuevo**: se reutiliza exactamente el mismo pipeline
-(features + Random Forest) de la Fase 1, ahora envuelto en `train.py` y
-`predict.py`.
+Esta fase expone el modelo de la Fase 2 mediante una API REST construida
+con **FastAPI**, reutilizando `features.py`, `train.py` (ya con
+`run_training()` como función) y `predict.py` sin duplicar lógica.
 
 ## Contenido de la carpeta
 
 ```
-fase-2/
-├── data/
-│   ├── generar_datos.py          # generador del dataset (heredado de Fase 1)
-│   └── ipc_panel_sintetico.csv
-├── model/                        # se crea/actualiza al ejecutar train.py
-│   ├── model_v1.joblib
-│   ├── model_v1_metadata.json
-│   └── latest.json               # apunta a la versión más reciente
+fase-3/
+├── data/                          # heredado
+├── model/                         # modelo versionado (model_v1.joblib, latest.json)
 ├── tests/
-│   └── test_pipeline.py          # pruebas con pytest
-├── features.py                   # ingeniería de variables (compartida)
-├── train.py                      # entrena y versiona el modelo
-├── predict.py                    # carga el modelo y predice
-├── ejemplo_input.json            # ejemplo de entrada para predict.py
+│   └── test_api.py                # pruebas con pytest + TestClient
+├── features.py                    # + validación de ciudad/grupo_gasto válidos
+├── train.py                       # run_training() reutilizado por /train
+├── predict.py                     # predict_from_payload() reutilizado por /predict
+├── app.py                         # API FastAPI: /health, /predict, /train
+├── cliente_prueba.py              # cliente de prueba manual (requests)
+├── ejemplo_input.json
 ├── Dockerfile
 ├── requirements.txt
 └── README.md
 ```
 
-## ⚠️ Nota sobre los datos (heredada de la Fase 1)
+## Endpoints
 
-`data/ipc_panel_sintetico.csv` sigue siendo **sintético** (ver
-`data/generar_datos.py` para el detalle y las fuentes reales de reemplazo:
-DANE vía datos.gov.co, Banco de la República, `yfinance` para petróleo).
-El pipeline de `features.py`/`train.py`/`predict.py` no cambia al usar
-datos reales: solo se reemplaza el CSV de entrada.
+| Método | Ruta | Descripción |
+|---|---|---|
+| GET | `/health` | Estado del servicio y si hay un modelo cargado |
+| POST | `/predict` | Predicción puntual (recibe features ya calculadas) |
+| POST | `/train` | Reentrena el modelo y lo versiona |
 
-## Uso sin Docker
+Documentación interactiva autogenerada (Swagger UI): `http://localhost:8000/docs`
+
+### `GET /health`
+
+```json
+{"status": "ok", "model_loaded": true, "model_version": 1}
+```
+
+### `POST /predict`
+
+Cuerpo esperado (todos los campos son obligatorios):
+
+```json
+{
+  "ciudad": "Medellín",
+  "grupo_gasto": "Transporte",
+  "ipc_lag1": 0.42,
+  "ipc_lag3": 0.31,
+  "ipc_lag6": 0.55,
+  "mes_sin": 0.5,
+  "mes_cos": 0.8660254,
+  "tasa_banrep": 9.5,
+  "var_trm": 1.2,
+  "var_petroleo": -0.5
+}
+```
+
+Respuesta:
+
+```json
+{
+  "ciudad": "Medellín",
+  "grupo_gasto": "Transporte",
+  "ipc_variacion_mensual_predicha": 0.1943,
+  "model_version": 1
+}
+```
+
+Manejo de errores:
+- **422** — campo faltante o de tipo incorrecto (validado automáticamente por Pydantic).
+- **400** — ciudad o grupo de gasto no reconocidos (validado explícitamente contra las 24 ciudades y 12 grupos de gasto válidos).
+- **503** — no hay ningún modelo entrenado todavía (llamar primero a `/train`).
+
+### `POST /train`
+
+Cuerpo opcional (todos los campos tienen valores por defecto):
+
+```json
+{
+  "data_path": "data/ipc_panel_sintetico.csv",
+  "model_type": "random_forest",
+  "test_start": "2023-01-01"
+}
+```
+
+Respuesta: metadatos y métricas del modelo recién entrenado (mismo formato
+que `model_v{N}_metadata.json`). Errores: **404** si `data_path` no existe,
+**400** si el dataset no cumple el mínimo de observaciones o el corte
+train/test deja algún conjunto vacío.
+
+## Por qué `/predict` no recibe "ciudad + fecha" y calcula los rezagos internamente
+
+Calcular `ipc_lag1`, `ipc_lag3`, `ipc_lag6` o la variación de TRM/petróleo
+requiere el histórico completo de esa serie ciudad–grupo de gasto. En una
+API de predicción puntual sin base de datos propia, esa responsabilidad le
+corresponde a quien arma la solicitud (un sistema externo que sí tiene
+acceso al histórico), no a este servicio. Esto mantiene la API **sin
+estado** entre solicitudes.
+
+## Uso local sin Docker
 
 ```bash
 pip install -r requirements.txt
 
-# Entrenar (crea model/model_v1.joblib, o v2, v3... en ejecuciones sucesivas)
-python train.py --data data/ipc_panel_sintetico.csv
+# Levantar la API
+uvicorn app:app --reload --port 8000
 
-# Predecir con un archivo JSON
-python predict.py --input-file ejemplo_input.json
+# En otra terminal: entrenar
+curl -X POST http://localhost:8000/train
 
-# Predecir pasando el JSON directamente
-python predict.py --json '{"ciudad": "Medellín", "grupo_gasto": "Transporte", "ipc_lag1": 0.4, "ipc_lag3": 0.3, "ipc_lag6": 0.5, "mes_sin": 0.5, "mes_cos": 0.87, "tasa_banrep": 9.5, "var_trm": 1.2, "var_petroleo": -0.5}'
+# Predecir
+curl -X POST http://localhost:8000/predict \
+  -H "Content-Type: application/json" \
+  -d '{"ciudad":"Medellín","grupo_gasto":"Transporte","ipc_lag1":0.42,"ipc_lag3":0.31,"ipc_lag6":0.55,"mes_sin":0.5,"mes_cos":0.8660254,"tasa_banrep":9.5,"var_trm":1.2,"var_petroleo":-0.5}'
 
-# Usar una versión específica del modelo en vez de la más reciente
-python predict.py --input-file ejemplo_input.json --model-version 1
-
-# Correr las pruebas
-pytest -v
+# O usar el cliente de prueba, que ejecuta health -> train -> predict (válido e inválido)
+python cliente_prueba.py --base-url http://localhost:8000
 ```
-
-### ¿Por qué `predict.py` recibe features ya calculadas y no fecha/ciudad crudos?
-
-Calcular un rezago (`ipc_lag1`, `ipc_lag3`, `ipc_lag6`) o una variación
-porcentual (`var_trm`, `var_petroleo`) requiere el histórico completo de esa
-serie ciudad–grupo de gasto, no solo el dato del día. Esa responsabilidad
-es de quien construye la solicitud (en la Fase 3, la propia API), no de
-`predict.py`. Esto mantiene `predict.py` simple, rápido y sin estado.
-
-## Versionado del modelo
-
-Cada ejecución de `train.py` crea `model_v{N}.joblib` con su
-`model_v{N}_metadata.json` (métricas, período de entrenamiento, features
-usadas) y actualiza `model/latest.json`, que `predict.py` lee por defecto.
-Los modelos anteriores nunca se sobrescriben, lo que permite comparar
-versiones o hacer rollback simplemente apuntando `--model-version` a una
-versión anterior.
 
 ## Uso con Docker
 
 ```bash
-# Construir la imagen
-docker build -t ipc-model .
-
-# Entrenar dentro del contenedor, persistiendo el modelo en el host
-docker run --rm \
-  -v "$(pwd)/model:/app/model" \
-  ipc-model train.py --data data/ipc_panel_sintetico.csv
-
-# Predecir dentro del contenedor, usando el modelo ya entrenado
-docker run --rm \
-  -v "$(pwd)/model:/app/model" \
-  ipc-model predict.py --json '{"ciudad": "Medellín", "grupo_gasto": "Transporte", "ipc_lag1": 0.4, "ipc_lag3": 0.3, "ipc_lag6": 0.5, "mes_sin": 0.5, "mes_cos": 0.87, "tasa_banrep": 9.5, "var_trm": 1.2, "var_petroleo": -0.5}'
+docker build -t ipc-api .
+docker run --rm -p 8000:8000 -v "$(pwd)/model:/app/model" ipc-api
 ```
 
-> El montaje de `model/` como volumen (`-v`) es lo que permite que el
-> modelo entrenado sobreviva fuera del contenedor y que `predict.py` (en
-> otra ejecución del contenedor) pueda encontrarlo.
+La API queda disponible en `http://localhost:8000`. El volumen sobre
+`model/` permite que el modelo entrenado (o reentrenado vía `/train`)
+persista fuera del contenedor.
 
 ## Pruebas (pytest)
 
-`tests/test_pipeline.py` cubre:
-- `features.py` produce las columnas esperadas y falla ante columnas faltantes.
-- `train.py` (vía CLI) crea un modelo versionado con metadatos y métricas válidas.
-- Ejecuciones sucesivas de `train.py` incrementan la versión (v1, v2, ...) sin sobrescribir.
-- `predict.py` devuelve una predicción numérica válida ante una entrada correcta.
-- `predict.py` lanza un error controlado ante campos faltantes.
-- El flujo CLI completo de `predict.py` (end-to-end) funciona con un archivo JSON real.
-- Solicitar una versión de modelo inexistente falla de forma controlada.
+`tests/test_api.py` usa `TestClient` de FastAPI (no requiere levantar el
+servidor) y cubre:
+- `/health` sin modelo cargado.
+- `/predict` sin modelo entrenado → 503.
+- `/predict` con campo faltante → 422 (validación de Pydantic).
+- `/predict` con ciudad inválida → 400 (validación de negocio).
+- `/predict` con entrada válida tras entrenar → 200 y predicción numérica.
+- `/train` crea el modelo, actualiza métricas y `/health` refleja el cambio.
+- `/train` incrementa versión en ejecuciones sucesivas.
+- `/train` con `data_path` inexistente → 404.
+- `/train` con cuerpo vacío usa los valores por defecto (random_forest).
 
 ```bash
 pytest -v
-# 8 passed
+# 9 passed
 ```
 
-## Resultados obtenidos (modelo versión 1, Random Forest)
+**Verificación adicional (no solo TestClient):** se levantó el servidor
+real con `uvicorn` y se corrió `cliente_prueba.py` contra `localhost:8000`,
+confirmando el ciclo completo `health → train → predict (válido) → predict
+(ciudad inválida, 400) → predict (campo faltante, 422)`.
 
-| Métrica | Valor |
-|---|---|
-| MAE | 0.284 |
-| RMSE | 0.378 |
-| RMSE baseline ingenuo (persistencia) | 0.663 |
+## Próximos pasos (Fase 4 — Monitoreo)
 
-## Próximos pasos (Fase 3)
-
-- Exponer `train.py`/`predict.py` mediante una API REST (`/health`, `/predict`, `/train`) usando FastAPI.
-- `predict_from_payload()` en `predict.py` ya está aislada para ser reutilizada directamente por el endpoint `/predict`, sin duplicar lógica.
+- Registrar cada predicción (entrada, salida, fecha) en un log o base de datos ligera.
+- Endpoint o reporte de error rodante (MAE/RMSE) cuando se conozca el valor real.
+- Política simple de reentrenamiento automático ante señales de drift.

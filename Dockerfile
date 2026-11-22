@@ -1,4 +1,4 @@
-# Fase 2 — Contenedor reproducible para entrenar y predecir el modelo de IPC
+# Fase 3 — API REST para el modelo de predicción del IPC
 
 FROM python:3.11-slim
 
@@ -8,13 +8,11 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copiar el código y los datos necesarios
-COPY features.py train.py predict.py ./
+# Copiar el código, los datos y el modelo ya entrenado
+COPY features.py train.py predict.py app.py cliente_prueba.py ./
 COPY data/ ./data/
+COPY model/ ./model/
 
-# La carpeta model/ se monta como volumen para persistir el modelo
-# entrenado fuera del contenedor (ver README.md para el comando docker run).
-RUN mkdir -p model
+EXPOSE 8000
 
-ENTRYPOINT ["python"]
-CMD ["predict.py", "--help"]
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]

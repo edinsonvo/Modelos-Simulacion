@@ -1,4 +1,3 @@
-
 """
 features.py — Ingeniería de variables compartida entre train.py y predict.py
 
@@ -17,6 +16,29 @@ FEATURE_COLS_NUM: List[str] = [
 ]
 FEATURE_COLS_CAT: List[str] = ["ciudad", "grupo_gasto"]
 TARGET_COL: str = "ipc_variacion_mensual"
+
+CIUDADES_VALIDAS: List[str] = [
+    "Bogotá D.C.", "Medellín", "Cali", "Barranquilla", "Bucaramanga",
+    "Manizales", "Pereira", "Pasto", "Cúcuta", "Cartagena", "Neiva",
+    "Montería", "Villavicencio", "Tunja", "Florencia", "Popayán",
+    "Valledupar", "Riohacha", "Santa Marta", "Armenia", "Ibagué",
+    "Sincelejo", "Quibdó", "San Andrés",
+]
+
+GRUPOS_GASTO_VALIDOS: List[str] = [
+    "Alimentos y bebidas no alcohólicas",
+    "Bebidas alcohólicas y tabaco",
+    "Prendas de vestir y calzado",
+    "Alojamiento, agua, electricidad, gas y otros combustibles",
+    "Muebles, artículos para el hogar y para la conservación ordinaria del hogar",
+    "Salud",
+    "Transporte",
+    "Información y comunicación",
+    "Recreación y cultura",
+    "Educación",
+    "Restaurantes y hoteles",
+    "Bienes y servicios diversos",
+]
 
 REQUIRED_RAW_COLUMNS: List[str] = [
     "fecha", "ciudad", "grupo_gasto", "ipc_variacion_mensual",
@@ -84,7 +106,8 @@ def build_single_prediction_row(payload: Dict[str, Any]) -> pd.DataFrame:
     """Valida y convierte un payload de predicción (dict) en un DataFrame.
 
     Garantiza que el payload sea un diccionario, contenga todos los campos
-    requeridos y retorne las columnas en el orden estricto del modelo.
+    requeridos, use una ciudad y un grupo de gasto reconocidos, y retorne
+    las columnas en el orden estricto del modelo.
     """
     if not isinstance(payload, dict):
         raise TypeError(f"Se esperaba un dict para el payload, recibido: {type(payload).__name__}")
@@ -92,6 +115,16 @@ def build_single_prediction_row(payload: Dict[str, Any]) -> pd.DataFrame:
     faltantes = [c for c in PREDICTION_INPUT_FIELDS if c not in payload]
     if faltantes:
         raise ValueError(f"Faltan campos requeridos en la solicitud: {faltantes}")
+
+    if payload["ciudad"] not in CIUDADES_VALIDAS:
+        raise ValueError(
+            f"Ciudad desconocida: '{payload['ciudad']}'. Valores válidos: {CIUDADES_VALIDAS}"
+        )
+    if payload["grupo_gasto"] not in GRUPOS_GASTO_VALIDOS:
+        raise ValueError(
+            f"Grupo de gasto desconocido: '{payload['grupo_gasto']}'. "
+            f"Valores válidos: {GRUPOS_GASTO_VALIDOS}"
+        )
 
     fila = {col: payload[col] for col in PREDICTION_INPUT_FIELDS}
     return pd.DataFrame([fila])[PREDICTION_INPUT_FIELDS]

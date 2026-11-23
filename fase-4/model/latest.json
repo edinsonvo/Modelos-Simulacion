@@ -1,0 +1,5 @@
+{
+  "version": 2,
+  "model_file": "model_v2.joblib",
+  "metadata_file": "model_v2_metadata.json"
+}
